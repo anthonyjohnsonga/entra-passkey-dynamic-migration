@@ -1,0 +1,13 @@
+# Claude Code local settings. Machine-specific and contains local filesystem
+# paths, so it must never be published.
+.claude/settings.local.json
+
+# Captured script output. May contain tenant configuration and account names.
+*.txt
+passkey-probe.txt
+
+# Windows / editor noise
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
