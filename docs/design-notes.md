@@ -4,7 +4,7 @@ Why `Set-EntraPasskeyDynamicMigrationOptOut.ps1` behaves the way it does, and
 what it deliberately refuses to do.
 
 If you only want to run it, read
-[Test-EntraPasskeyOptOutShape-Guide.md](Test-EntraPasskeyOptOutShape-Guide.md)
+[operator-guide.md](operator-guide.md)
 instead. This document is for anyone reviewing the script before trusting it
 against their own tenant.
 

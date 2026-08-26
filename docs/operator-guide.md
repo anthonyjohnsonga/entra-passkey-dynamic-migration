@@ -83,10 +83,10 @@ Confirm the account and tenant are the ones you intend before continuing.
 
 ## 3. Run the probe
 
-Change to the folder containing the scripts, then run it:
+The scripts live in the repository root. Change to it, then run the probe:
 
 ```powershell
-Set-Location 'C:\path\to\this\repo'
+Set-Location 'C:\path\to\entra-passkey-dynamic-migration'
 & .\Test-EntraPasskeyOptOutShape.ps1
 ```
 
