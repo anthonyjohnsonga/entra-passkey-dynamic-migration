@@ -120,7 +120,8 @@ role the request returns `403` even with consent in place.
 |---|---|
 | `Set-EntraPasskeyDynamicMigrationOptOut.ps1` | The report and the opt-out. Supports `-ReportOnly` and `-Verbose`. |
 | `Test-EntraPasskeyOptOutShape.ps1` | Read-only probe. Issues three GETs and nothing else; reports how your tenant returns `optOutSettings`. |
-| [`docs/operator-guide.md`](docs/operator-guide.md) | Step-by-step: connecting, running, reading the output, troubleshooting. |
+| [`docs/user-guide.md`](docs/user-guide.md) | **Start here.** Every step from installing the module to confirming the change, plus troubleshooting. |
+| [`docs/probe-guide.md`](docs/probe-guide.md) | Optional diagnostic: running the probe and reading its output. |
 | [`docs/design-notes.md`](docs/design-notes.md) | Why the script behaves as it does, its safety boundaries, and what has been verified. |
 
 ---
