@@ -1139,7 +1139,23 @@ else {
 }
 
 if (-not (Test-PasskeyDynamicMigrationStatus)) {
-    throw 'Verification failed: passkeyDynamicMigration is not true after the operation.'
+    throw @'
+Verification failed: passkeyDynamicMigration is not true after the operation.
+
+The update request was accepted, but re-reading the policy did not return true.
+No other tenant setting was modified.
+
+optOutSettings is absent from Microsoft's published Graph metadata, so its shape
+cannot be validated in advance. It may differ in this tenant, or Microsoft may
+have changed it. To see what this tenant actually returns, run:
+
+    .\Test-EntraPasskeyOptOutShape.ps1
+
+If optOutSettings is missing or shaped unexpectedly, please report it with that
+output at:
+
+    https://github.com/anthonyjohnsonga/entra-passkey-dynamic-migration/issues
+'@
 }
 
 Write-Host '  Verified against the policy after the operation.' -ForegroundColor Green

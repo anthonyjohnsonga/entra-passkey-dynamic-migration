@@ -128,8 +128,9 @@ role the request returns `403` even with consent in place.
 
 ## Verified behaviour
 
-Exercised against a mocked Graph module under Windows PowerShell 5.1, and
-confirmed against a live tenant:
+Exercised against a mocked Graph module under Windows PowerShell 5.1 across 20
+scenarios, and confirmed end to end against **one** production tenant in August
+2026:
 
 - Sends no PATCH when the value is already `true`.
 - Sets the value when it is `false`, `null`, or absent.
@@ -151,6 +152,28 @@ model. OData services can silently ignore properties they do not model,
 returning success without changing anything, so a `200` response does not prove
 the write landed. Re-reading the value is the only way to know, and it turns a
 silent no-op into a clear error.
+
+### Known limitations
+
+**The PATCH shape is verified against one tenant, not many.** Because
+`optOutSettings` is absent from Graph's published metadata, there is no schema
+to validate it against — the request body comes from observed behaviour, not
+documentation. It worked there, and the policy's own `lastModifiedDateTime`
+advanced to confirm it. That is the strongest evidence available, but it is a
+sample of one.
+
+Microsoft could also change the property at any time, since an unmodelled beta
+property carries no compatibility guarantee.
+
+This is why verification is mandatory rather than optional. If the shape is
+wrong or changes, you get a terminating error naming the problem — never a false
+success, and never a silent no-op. Nothing else in your tenant is touched
+either way.
+
+**If verification fails for you**, run `.\Test-EntraPasskeyOptOutShape.ps1` to
+see what your tenant actually returns, and please
+[open an issue](https://github.com/anthonyjohnsonga/entra-passkey-dynamic-migration/issues)
+with that output. That is the only way this limitation gets narrowed.
 
 ---
 
