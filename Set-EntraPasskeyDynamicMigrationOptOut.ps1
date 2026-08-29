@@ -23,10 +23,25 @@
     FINAL VERIFIED STATUS block. Use this to review the policy before
     authorising the opt-out.
 
+.PARAMETER NoColor
+    Write the report without console colour. The [ OK ] and [WARN] status tags
+    still mark every outcome, so nothing is lost. Setting the NO_COLOR
+    environment variable to any non-empty value has the same effect.
+
 .EXAMPLE
     .\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly
 
     Reports the policy and shows what a normal run would do, changing nothing.
+
+.EXAMPLE
+    .\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -NoColor 6>&1 |
+        Tee-Object -FilePath .\policy-report.txt
+
+    Reports the policy without colour, which suits a log file or a build agent.
+
+    The report is written with Write-Host, so it travels on the information
+    stream. The 6>&1 redirection is what puts it in the pipeline; without it
+    Tee-Object receives nothing and writes an empty file.
 
 .EXAMPLE
     .\Set-EntraPasskeyDynamicMigrationOptOut.ps1
@@ -51,7 +66,10 @@
 param(
     # Produce the full report and stop before the PATCH. Nothing is changed and
     # nothing is verified, so the run ends without a FINAL VERIFIED STATUS block.
-    [switch] $ReportOnly
+    [switch] $ReportOnly,
+
+    # Suppress console colour. The status tags still carry every outcome.
+    [switch] $NoColor
 )
 
 Set-StrictMode -Version Latest
@@ -88,6 +106,11 @@ $script:NoneTargetId = '00000000-0000-0000-0000-000000000000'
 # heavily throttled tenant cannot stall the opt-out.
 $script:MaxThrottleWaitSeconds = 20
 $script:DefaultThrottleWaitSeconds = 5
+
+# Colour is reinforcement only; the status tags carry every outcome without it.
+# NO_COLOR is honoured per https://no-color.org - any non-empty value disables
+# colour - so this script behaves like other tools on a build agent that sets it.
+$script:UseColor = -not ($NoColor -or -not [string]::IsNullOrEmpty($env:NO_COLOR))
 
 $script:GroupNameCache = @{}
 $script:CanResolveGroups = $false
@@ -175,6 +198,31 @@ function Get-GraphArray {
 
 #region Console output helpers
 
+function Write-HostColor {
+    <#
+        The single place this script decides whether to emit colour, so
+        -NoColor and NO_COLOR cannot be honoured in one part of the report and
+        ignored in another.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string] $Text,
+
+        [string] $Color,
+
+        [switch] $NoNewline
+    )
+
+    if ($script:UseColor -and -not [string]::IsNullOrWhiteSpace($Color)) {
+        Write-Host $Text -ForegroundColor $Color -NoNewline:$NoNewline
+    }
+    else {
+        Write-Host $Text -NoNewline:$NoNewline
+    }
+}
+
 function Format-DisplayValue {
     [CmdletBinding()]
     param($Value)
@@ -225,8 +273,8 @@ function Write-Section {
     )
 
     Write-Host ''
-    Write-Host $Title -ForegroundColor Cyan
-    Write-Host ('-' * $Title.Length) -ForegroundColor Cyan
+    Write-HostColor -Text $Title -Color Cyan
+    Write-HostColor -Text ('-' * $Title.Length) -Color Cyan
 }
 
 function Write-Field {
@@ -241,12 +289,7 @@ function Write-Field {
 
     $text = '{0}{1,-32}{2}' -f (' ' * $Indent), ($Label + ':'), (Format-DisplayValue -Value $Value)
 
-    if (-not [string]::IsNullOrWhiteSpace($Color)) {
-        Write-Host $text -ForegroundColor $Color
-    }
-    else {
-        Write-Host $text
-    }
+    Write-HostColor -Text $text -Color $Color
 }
 
 function Write-Note {
@@ -301,7 +344,7 @@ function Write-Status {
 
     for ($i = 0; $i -lt $Text.Count; $i++) {
         if ($i -eq 0) {
-            Write-Host ($margin + $tag + ' ') -ForegroundColor $color -NoNewline
+            Write-HostColor -Text ($margin + $tag + ' ') -Color $color -NoNewline
             Write-Host $Text[$i]
         }
         else {
@@ -1215,9 +1258,9 @@ output at:
 Write-Status -Level Ok -Text 'Verified against the policy after the operation.'
 
 Write-Section 'FINAL VERIFIED STATUS'
-Write-Host '{' -ForegroundColor Green
-Write-Host '  "passkeyDynamicMigration": true' -ForegroundColor Green
-Write-Host '}' -ForegroundColor Green
+Write-HostColor -Text '{' -Color Green
+Write-HostColor -Text '  "passkeyDynamicMigration": true' -Color Green
+Write-HostColor -Text '}' -Color Green
 
 Write-Host ''
 Write-Host 'The Microsoft Graph session is still connected. Run Disconnect-MgGraph when finished.'

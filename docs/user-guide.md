@@ -178,9 +178,18 @@ is sent and nothing is verified.
 To keep a copy:
 
 ```powershell
-.\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly |
+.\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -NoColor 6>&1 |
     Tee-Object -FilePath "$env:USERPROFILE\Desktop\auth-methods-report.txt"
 ```
+
+The `6>&1` matters. The report is written with `Write-Host`, which travels on
+the information stream rather than the pipeline — without the redirection
+`Tee-Object` receives nothing and you get an empty file.
+
+`-NoColor` suppresses the console colouring. Nothing is lost by it: the
+`[ OK ]`, `[WARN]`, `[SKIP]` and `[FAIL]` tags mark every outcome in the text
+itself. Setting the `NO_COLOR` environment variable to any non-empty value has
+the same effect, which is what most build agents do.
 
 Add `-Verbose` for per-group resolution detail.
 
