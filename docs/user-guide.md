@@ -234,11 +234,12 @@ Security Defaults and per-user MFA determine that, and none are visible here.
 
 ```text
   Current value:                  null
-  Current value is null. A normal run would set passkeyDynamicMigration to true.
+  [WARN] Current value is null. A normal run would set passkeyDynamicMigration to true.
 
 REPORT ONLY - NO CHANGES MADE
 -----------------------------
-  -ReportOnly was specified, so no PATCH was sent and no value was verified.
+  [SKIP] -ReportOnly was specified, so no PATCH was sent and no value was verified.
+         Rerun without -ReportOnly to apply the opt-out.
 ```
 
 A `-ReportOnly` run **always** ends with that block and never prints
@@ -274,9 +275,9 @@ A successful run ends with exactly this:
 PASSKEY DYNAMIC MIGRATION
 -------------------------
   Current value:                  null
-  Current value is null. Setting passkeyDynamicMigration to true...
-  Update request sent.
-  Verified against the policy after the operation.
+  [WARN] Current value is null. Setting passkeyDynamicMigration to true...
+  [ -- ] Update request sent.
+  [ OK ] Verified against the policy after the operation.
 
 FINAL VERIFIED STATUS
 ---------------------
@@ -305,7 +306,7 @@ The script is idempotent. A second run reports:
 
 ```text
   Current value:                  true
-  passkeyDynamicMigration is already true. No change was required.
+  [ OK ] passkeyDynamicMigration is already true. No change was required.
 ```
 
 No PATCH is sent. You can re-run it any time to re-read the policy.

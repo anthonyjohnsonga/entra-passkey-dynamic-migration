@@ -260,6 +260,56 @@ function Write-Note {
     Write-Host ((' ' * $Indent) + $Text)
 }
 
+function Write-Status {
+    <#
+        Writes an outcome line as a fixed-width ASCII tag followed by its text.
+
+        The tag carries the severity in the characters themselves, so the meaning
+        survives a transcript, a redirected log and a reader who cannot
+        distinguish the colours. Colour remains, but only as reinforcement.
+
+        Every tag is the same width, so consecutive statuses align and additional
+        lines of the same status hang under the first line's text.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('Ok', 'Warn', 'Fail', 'Info', 'Skip')]
+        [string] $Level,
+
+        # Each element is one line. Lines after the first are aligned under the
+        # text of the first rather than repeating the tag.
+        [Parameter(Mandatory = $true)]
+        [string[]] $Text,
+
+        [int] $Indent = 2
+    )
+
+    $tag = '[ -- ]'
+    $color = 'Gray'
+
+    switch ($Level) {
+        'Ok'   { $tag = '[ OK ]'; $color = 'Green' }
+        'Warn' { $tag = '[WARN]'; $color = 'Yellow' }
+        'Fail' { $tag = '[FAIL]'; $color = 'Red' }
+        'Skip' { $tag = '[SKIP]'; $color = 'DarkGray' }
+        'Info' { $tag = '[ -- ]'; $color = 'Gray' }
+    }
+
+    $margin = ' ' * $Indent
+    $hangingIndent = ' ' * ($Indent + $tag.Length + 1)
+
+    for ($i = 0; $i -lt $Text.Count; $i++) {
+        if ($i -eq 0) {
+            Write-Host ($margin + $tag + ' ') -ForegroundColor $color -NoNewline
+            Write-Host $Text[$i]
+        }
+        else {
+            Write-Host ($hangingIndent + $Text[$i])
+        }
+    }
+}
+
 function Add-Observation {
     [CmdletBinding()]
     param(
@@ -994,7 +1044,7 @@ function Show-PolicyObservations {
     Write-Section 'OBSERVATIONS'
 
     if ($script:Observations.Count -eq 0) {
-        Write-Host '  No observations.'
+        Write-Status -Level Info -Text 'No observations.'
     }
     else {
         foreach ($observation in $script:Observations) {
@@ -1080,9 +1130,11 @@ else {
     Write-Field -Label 'Interpretation' -Value $migrationDisplay.Text -Color Yellow
 
     Write-Host ''
-    Write-Host '  WARNING: Migration to the modern Authentication Methods policy is not confirmed complete.' -ForegroundColor Yellow
-    Write-Host '           Legacy MFA and SSPR authentication method settings may still apply to users.' -ForegroundColor Yellow
-    Write-Host '           The modern policy is still reported below.' -ForegroundColor Yellow
+    Write-Status -Level Warn -Text @(
+        'Migration to the modern Authentication Methods policy is not confirmed complete.'
+        'Legacy MFA and SSPR authentication method settings may still apply to users.'
+        'The modern policy is still reported below.'
+    )
 }
 
 Resolve-PolicyGroupTargets -Policy $policy
@@ -1090,7 +1142,7 @@ Resolve-PolicyGroupTargets -Policy $policy
 Write-Section 'AUTHENTICATION METHODS'
 $methods = Get-GraphArray -InputObject $policy -Name 'authenticationMethodConfigurations'
 if ($methods.Count -eq 0) {
-    Write-Host '  No authentication method configurations were returned.'
+    Write-Status -Level Warn -Text 'No authentication method configurations were returned.'
 }
 else {
     foreach ($method in $methods) {
@@ -1109,16 +1161,18 @@ $displayValue = if ($null -eq $currentValue) { 'null' } else { $currentValue.ToS
 if ($ReportOnly) {
     if ($currentValue -eq $true) {
         Write-Field -Label 'Current value' -Value $displayValue -Color Green
-        Write-Host '  passkeyDynamicMigration is already true. A normal run would make no change.' -ForegroundColor Green
+        Write-Status -Level Ok -Text 'passkeyDynamicMigration is already true. A normal run would make no change.'
     }
     else {
         Write-Field -Label 'Current value' -Value $displayValue -Color Yellow
-        Write-Host "  Current value is $displayValue. A normal run would set passkeyDynamicMigration to true." -ForegroundColor Yellow
+        Write-Status -Level Warn -Text "Current value is $displayValue. A normal run would set passkeyDynamicMigration to true."
     }
 
     Write-Section 'REPORT ONLY - NO CHANGES MADE'
-    Write-Host '  -ReportOnly was specified, so no PATCH was sent and no value was verified.' -ForegroundColor Yellow
-    Write-Host '  Rerun without -ReportOnly to apply the opt-out.' -ForegroundColor Yellow
+    Write-Status -Level Skip -Text @(
+        '-ReportOnly was specified, so no PATCH was sent and no value was verified.'
+        'Rerun without -ReportOnly to apply the opt-out.'
+    )
 
     Write-Host ''
     Write-Host 'The Microsoft Graph session is still connected. Run Disconnect-MgGraph when finished.'
@@ -1127,15 +1181,15 @@ if ($ReportOnly) {
 
 if ($currentValue -eq $true) {
     Write-Field -Label 'Current value' -Value 'true' -Color Green
-    Write-Host '  passkeyDynamicMigration is already true. No change was required.' -ForegroundColor Green
+    Write-Status -Level Ok -Text 'passkeyDynamicMigration is already true. No change was required.'
 }
 else {
     Write-Field -Label 'Current value' -Value $displayValue -Color Yellow
-    Write-Host "  Current value is $displayValue. Setting passkeyDynamicMigration to true..." -ForegroundColor Yellow
+    Write-Status -Level Warn -Text "Current value is $displayValue. Setting passkeyDynamicMigration to true..."
 
     Set-PasskeyDynamicMigrationOptOut
 
-    Write-Host '  Update request sent.' -ForegroundColor Yellow
+    Write-Status -Level Info -Text 'Update request sent.'
 }
 
 if (-not (Test-PasskeyDynamicMigrationStatus)) {
@@ -1158,7 +1212,7 @@ output at:
 '@
 }
 
-Write-Host '  Verified against the policy after the operation.' -ForegroundColor Green
+Write-Status -Level Ok -Text 'Verified against the policy after the operation.'
 
 Write-Section 'FINAL VERIFIED STATUS'
 Write-Host '{' -ForegroundColor Green
