@@ -265,6 +265,27 @@ function Format-DisplayValue {
     return [string]$Value
 }
 
+function Get-StateColor {
+    <#
+        Returns the colour for a policy state, so a reader can scan the states
+        down the report instead of reading every one. Colour is reinforcement
+        only - the state word itself is always printed.
+
+        Any state other than enabled or disabled is deliberately left
+        uncoloured. "default" is a legitimate value on several of these settings
+        and means Microsoft manages it, and a state this script does not
+        recognise must not be shown as though its meaning were known.
+    #>
+    [CmdletBinding()]
+    param([string] $State)
+
+    switch ($State) {
+        'enabled'  { return 'Green' }
+        'disabled' { return 'DarkGray' }
+        default    { return '' }
+    }
+}
+
 function Write-Section {
     [CmdletBinding()]
     param(
@@ -906,7 +927,7 @@ function Show-AuthenticationMethodDetails {
     Write-Host ('  ' + (Get-AuthenticationMethodFriendlyName -Method $Method))
 
     Write-Field -Label 'Graph ID' -Value $id -Indent 4
-    Write-Field -Label 'State' -Value $state -Indent 4
+    Write-Field -Label 'State' -Value $state -Indent 4 -Color (Get-StateColor -State $state)
     Write-TargetField -Label 'Included targets' -Targets (Get-GraphArray -InputObject $Method -Name 'includeTargets') -MethodId $id
     Write-TargetField -Label 'Excluded targets' -Targets (Get-GraphArray -InputObject $Method -Name 'excludeTargets') -MethodId $id
 
@@ -989,25 +1010,28 @@ function Show-AdditionalPolicySettings {
     Write-Field -Label 'Last modified' -Value (Get-GraphValue -InputObject $Policy -Name 'lastModifiedDateTime')
 
     $campaign = Get-GraphPath -InputObject $Policy -Path 'registrationEnforcement', 'authenticationMethodsRegistrationCampaign'
+    $campaignState = [string](Get-GraphValue -InputObject $campaign -Name 'state')
     Write-Host ''
     Write-Host '  Registration Campaign'
-    Write-Field -Label 'State' -Value (Get-GraphValue -InputObject $campaign -Name 'state') -Indent 4
+    Write-Field -Label 'State' -Value $campaignState -Indent 4 -Color (Get-StateColor -State $campaignState)
     Write-Field -Label 'Snooze duration (days)' -Value (Get-GraphValue -InputObject $campaign -Name 'snoozeDurationInDays') -Indent 4
     Write-Field -Label 'Enforce after snoozes' -Value (Get-GraphValue -InputObject $campaign -Name 'enforceRegistrationAfterAllowedSnoozes') -Indent 4
     Write-TargetField -Label 'Included targets' -Targets (Get-GraphArray -InputObject $campaign -Name 'includeTargets') -MethodId 'RegistrationCampaign'
     Write-TargetField -Label 'Excluded targets' -Targets (Get-GraphArray -InputObject $campaign -Name 'excludeTargets')
 
     $systemCredentials = Get-GraphValue -InputObject $Policy -Name 'systemCredentialPreferences'
+    $systemCredentialsState = [string](Get-GraphValue -InputObject $systemCredentials -Name 'state')
     Write-Host ''
     Write-Host '  System-preferred multifactor authentication'
-    Write-Field -Label 'State' -Value (Get-GraphValue -InputObject $systemCredentials -Name 'state') -Indent 4
+    Write-Field -Label 'State' -Value $systemCredentialsState -Indent 4 -Color (Get-StateColor -State $systemCredentialsState)
     Write-TargetField -Label 'Included targets' -Targets (Get-GraphArray -InputObject $systemCredentials -Name 'includeTargets')
     Write-TargetField -Label 'Excluded targets' -Targets (Get-GraphArray -InputObject $systemCredentials -Name 'excludeTargets')
 
     $suspiciousActivity = Get-GraphValue -InputObject $Policy -Name 'reportSuspiciousActivitySettings'
+    $suspiciousActivityState = [string](Get-GraphValue -InputObject $suspiciousActivity -Name 'state')
     Write-Host ''
     Write-Host '  Suspicious activity reporting'
-    Write-Field -Label 'State' -Value (Get-GraphValue -InputObject $suspiciousActivity -Name 'state') -Indent 4
+    Write-Field -Label 'State' -Value $suspiciousActivityState -Indent 4 -Color (Get-StateColor -State $suspiciousActivityState)
     Write-Field -Label 'Voice reporting code' -Value (Get-GraphValue -InputObject $suspiciousActivity -Name 'voiceReportingCode') -Indent 4
     Write-TargetField -Label 'Included target' -Targets @(Get-GraphValue -InputObject $suspiciousActivity -Name 'includeTarget')
 

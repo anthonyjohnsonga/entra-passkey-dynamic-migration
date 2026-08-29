@@ -228,6 +228,11 @@ State alone does not tell you who can use a method, which is why targeting is
 always shown beside it. Some settings live on individual targets rather than on
 the method, and appear in `[square brackets]` next to each one.
 
+Every `State` line in the report is colour-coded — green for `enabled`, grey for
+`disabled` — so you can scan the column rather than read it. Any other value,
+including `default` on the settings that support it, is left uncoloured rather
+than guessed at. The state word is always printed, so `-NoColor` loses nothing.
+
 Methods the script does not recognise still appear, with their Graph ID and
 type. It will not fail on a method Microsoft adds later.
 
