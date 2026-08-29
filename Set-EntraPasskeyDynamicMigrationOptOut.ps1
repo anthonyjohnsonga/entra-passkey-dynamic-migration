@@ -14,8 +14,9 @@
     passkeyDynamicMigration is the only tenant setting this script modifies.
     Every other setting is reported read-only.
 
-    The script never connects to or disconnects from Microsoft Graph, and it
-    writes no files.
+    The script never connects to or disconnects from Microsoft Graph. It writes
+    no files unless -CsvPath is supplied, which is the only way to make it
+    write one.
 
 .PARAMETER ReportOnly
     Produce the full report and stop immediately before the PATCH. Nothing is
@@ -28,10 +29,30 @@
     still mark every outcome, so nothing is lost. Setting the NO_COLOR
     environment variable to any non-empty value has the same effect.
 
+.PARAMETER CsvPath
+    Also write the report to a CSV file at this path. The console report is
+    unchanged; the file is written in addition to it.
+
+    The file has one row per reported setting, with the columns Section, Item,
+    Setting and Value. That shape holds the whole report, including the
+    settings that do not fit a fixed set of columns, and it diffs cleanly
+    between two runs or two tenants.
+
+    The parent directory must already exist. It is checked before the script
+    contacts Microsoft Graph, so a mistyped path fails immediately rather than
+    after the policy has been read or changed. An existing file is overwritten.
+
 .EXAMPLE
     .\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly
 
     Reports the policy and shows what a normal run would do, changing nothing.
+
+.EXAMPLE
+    .\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -CsvPath .\tenant.csv
+
+    Reports the policy, changes nothing, and writes the whole report to
+    tenant.csv. Running this against two tenants and comparing the two files
+    shows exactly where their authentication policies differ.
 
 .EXAMPLE
     .\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -NoColor 6>&1 |
@@ -69,7 +90,11 @@ param(
     [switch] $ReportOnly,
 
     # Suppress console colour. The status tags still carry every outcome.
-    [switch] $NoColor
+    [switch] $NoColor,
+
+    # Also write the report to this CSV file. One row per reported setting.
+    # The console report is unchanged.
+    [string] $CsvPath
 )
 
 Set-StrictMode -Version Latest
@@ -106,6 +131,17 @@ $script:NoneTargetId = '00000000-0000-0000-0000-000000000000'
 # heavily throttled tenant cannot stall the opt-out.
 $script:MaxThrottleWaitSeconds = 20
 $script:DefaultThrottleWaitSeconds = 5
+
+# The CSV is assembled as the report is written rather than by walking the
+# policy a second time, so the file cannot drift out of step with what the
+# operator saw on screen. Section and Item track where the renderer currently
+# is, which is what turns a flat sequence of fields into locatable rows.
+$script:ExportCsv = -not [string]::IsNullOrWhiteSpace($CsvPath)
+$script:ResolvedCsvPath = ''
+$script:CsvWritten = $false
+$script:CsvRows = New-Object System.Collections.ArrayList
+$script:CurrentSection = ''
+$script:CurrentItem = ''
 
 # Colour is reinforcement only; the status tags carry every outcome without it.
 # NO_COLOR is honoured per https://no-color.org - any non-empty value disables
@@ -192,6 +228,124 @@ function Get-GraphArray {
     }
 
     return , @($value)
+}
+
+#endregion
+
+#region CSV export
+
+function Resolve-CsvExportPath {
+    <#
+        Turns -CsvPath into a full path and proves it can be written to, before
+        the script contacts Graph. A mistyped path must fail while nothing has
+        happened yet, not after the tenant has already been changed.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    # (Get-Location).ProviderPath, not the process working directory: PowerShell
+    # does not keep the two in step, so .NET would resolve a relative path
+    # against a directory the operator is not standing in.
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        $full = [System.IO.Path]::GetFullPath($Path)
+    }
+    else {
+        $full = [System.IO.Path]::GetFullPath((Join-Path (Get-Location).ProviderPath $Path))
+    }
+
+    if (Test-Path -LiteralPath $full -PathType Container) {
+        throw "The -CsvPath value is a directory, not a file: $full"
+    }
+
+    $directory = [System.IO.Path]::GetDirectoryName($full)
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        throw @"
+The directory for -CsvPath does not exist: $directory
+
+Create it first, or choose a path inside a directory that already exists.
+"@
+    }
+
+    return $full
+}
+
+function Add-CsvRow {
+    <#
+        Records one reported setting. Section and Item default to wherever the
+        renderer currently is, so most callers supply only the setting and its
+        value.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string] $Setting,
+
+        [AllowEmptyString()]
+        [string] $Value = '',
+
+        [AllowEmptyString()]
+        [string] $Section,
+
+        [AllowEmptyString()]
+        [string] $Item
+    )
+
+    # Statuses raised by the export itself would arrive after the file was
+    # written, so stop collecting once it has been.
+    if (-not $script:ExportCsv -or $script:CsvWritten) {
+        return
+    }
+
+    if (-not $PSBoundParameters.ContainsKey('Section')) { $Section = $script:CurrentSection }
+    if (-not $PSBoundParameters.ContainsKey('Item')) { $Item = $script:CurrentItem }
+
+    [void]$script:CsvRows.Add([pscustomobject]@{
+        Section = $Section
+        Item    = $Item
+        Setting = $Setting
+        Value   = $Value
+    })
+}
+
+function Export-PolicyCsv {
+    <#
+        Writes the collected rows. Called from each of the ways the run can end,
+        so a -ReportOnly run and a failed verification both still produce the
+        file - a failed verification is exactly when the operator needs the data
+        to report the problem.
+
+        A failure to write is reported but never rethrown. The tenant operation
+        has already happened and been verified by this point, and turning a
+        successful opt-out into a terminating error over a file path would
+        misrepresent what took place in the tenant.
+    #>
+    [CmdletBinding()]
+    param()
+
+    if (-not $script:ExportCsv -or $script:CsvWritten) {
+        return
+    }
+
+    $rowCount = $script:CsvRows.Count
+    $script:CsvWritten = $true
+
+    try {
+        $script:CsvRows | Export-Csv -LiteralPath $script:ResolvedCsvPath -NoTypeInformation -Encoding UTF8
+    }
+    catch {
+        Write-Status -Level Fail -Text @(
+            "Could not write the CSV to $script:ResolvedCsvPath",
+            $_.Exception.Message,
+            'Nothing above is affected by this. Only the file was not written.'
+        )
+        return
+    }
+
+    Write-Status -Level Ok -Text ('Wrote {0} rows to {1}' -f $rowCount, $script:ResolvedCsvPath)
 }
 
 #endregion
@@ -293,9 +447,32 @@ function Write-Section {
         [string] $Title
     )
 
+    $script:CurrentSection = $Title
+    $script:CurrentItem = ''
+
     Write-Host ''
     Write-HostColor -Text $Title -Color Cyan
     Write-HostColor -Text ('-' * $Title.Length) -Color Cyan
+}
+
+function Write-Item {
+    <#
+        Writes a sub-heading within a section - one authentication method, or
+        one of the additional settings groups - and records it as the Item that
+        the fields below it belong to.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Name,
+
+        [int] $Indent = 2
+    )
+
+    $script:CurrentItem = $Name
+
+    Write-Host ''
+    Write-Host ((' ' * $Indent) + $Name)
 }
 
 function Write-Field {
@@ -305,12 +482,21 @@ function Write-Field {
         [string] $Label,
         $Value,
         [int] $Indent = 2,
-        [string] $Color
+        [string] $Color,
+
+        # Set by callers that record their own rows, such as Write-TargetField,
+        # which emits one row per target rather than a single joined row.
+        [switch] $NoExport
     )
 
-    $text = '{0}{1,-32}{2}' -f (' ' * $Indent), ($Label + ':'), (Format-DisplayValue -Value $Value)
+    $display = Format-DisplayValue -Value $Value
+    $text = '{0}{1,-32}{2}' -f (' ' * $Indent), ($Label + ':'), $display
 
     Write-HostColor -Text $text -Color $Color
+
+    if (-not $NoExport) {
+        Add-CsvRow -Setting $Label -Value $display
+    }
 }
 
 function Write-Note {
@@ -362,6 +548,10 @@ function Write-Status {
 
     $margin = ' ' * $Indent
     $hangingIndent = ' ' * ($Indent + $tag.Length + 1)
+
+    # A status is one row whatever its length, tagged so that it can be told
+    # apart from the settings when filtering the file.
+    Add-CsvRow -Setting 'Status' -Value ('[{0}] {1}' -f $Level.ToUpperInvariant(), ($Text -join ' '))
 
     for ($i = 0; $i -lt $Text.Count; $i++) {
         if ($i -eq 0) {
@@ -860,9 +1050,15 @@ function Write-TargetField {
 
     $items = @(Format-TargetList -Targets $Targets -MethodId $MethodId)
 
-    Write-Field -Label $Label -Value $items[0] -Indent $Indent
+    Write-Field -Label $Label -Value $items[0] -Indent $Indent -NoExport
     for ($i = 1; $i -lt $items.Count; $i++) {
         Write-Host ('{0}{1,-32}{2}' -f (' ' * $Indent), '', $items[$i])
+    }
+
+    # One row per target rather than one joined row, so that adding or removing
+    # a single target shows up as a single line in a diff.
+    foreach ($item in $items) {
+        Add-CsvRow -Setting $Label -Value $item
     }
 }
 
@@ -923,8 +1119,7 @@ function Show-AuthenticationMethodDetails {
     $odataType = [string](Get-GraphValue -InputObject $Method -Name '@odata.type')
     $state = [string](Get-GraphValue -InputObject $Method -Name 'state')
 
-    Write-Host ''
-    Write-Host ('  ' + (Get-AuthenticationMethodFriendlyName -Method $Method))
+    Write-Item -Name (Get-AuthenticationMethodFriendlyName -Method $Method)
 
     Write-Field -Label 'Graph ID' -Value $id -Indent 4
     Write-Field -Label 'State' -Value $state -Indent 4 -Color (Get-StateColor -State $state)
@@ -1011,8 +1206,7 @@ function Show-AdditionalPolicySettings {
 
     $campaign = Get-GraphPath -InputObject $Policy -Path 'registrationEnforcement', 'authenticationMethodsRegistrationCampaign'
     $campaignState = [string](Get-GraphValue -InputObject $campaign -Name 'state')
-    Write-Host ''
-    Write-Host '  Registration Campaign'
+    Write-Item -Name 'Registration Campaign'
     Write-Field -Label 'State' -Value $campaignState -Indent 4 -Color (Get-StateColor -State $campaignState)
     Write-Field -Label 'Snooze duration (days)' -Value (Get-GraphValue -InputObject $campaign -Name 'snoozeDurationInDays') -Indent 4
     Write-Field -Label 'Enforce after snoozes' -Value (Get-GraphValue -InputObject $campaign -Name 'enforceRegistrationAfterAllowedSnoozes') -Indent 4
@@ -1021,16 +1215,14 @@ function Show-AdditionalPolicySettings {
 
     $systemCredentials = Get-GraphValue -InputObject $Policy -Name 'systemCredentialPreferences'
     $systemCredentialsState = [string](Get-GraphValue -InputObject $systemCredentials -Name 'state')
-    Write-Host ''
-    Write-Host '  System-preferred multifactor authentication'
+    Write-Item -Name 'System-preferred multifactor authentication'
     Write-Field -Label 'State' -Value $systemCredentialsState -Indent 4 -Color (Get-StateColor -State $systemCredentialsState)
     Write-TargetField -Label 'Included targets' -Targets (Get-GraphArray -InputObject $systemCredentials -Name 'includeTargets')
     Write-TargetField -Label 'Excluded targets' -Targets (Get-GraphArray -InputObject $systemCredentials -Name 'excludeTargets')
 
     $suspiciousActivity = Get-GraphValue -InputObject $Policy -Name 'reportSuspiciousActivitySettings'
     $suspiciousActivityState = [string](Get-GraphValue -InputObject $suspiciousActivity -Name 'state')
-    Write-Host ''
-    Write-Host '  Suspicious activity reporting'
+    Write-Item -Name 'Suspicious activity reporting'
     Write-Field -Label 'State' -Value $suspiciousActivityState -Indent 4 -Color (Get-StateColor -State $suspiciousActivityState)
     Write-Field -Label 'Voice reporting code' -Value (Get-GraphValue -InputObject $suspiciousActivity -Name 'voiceReportingCode') -Indent 4
     Write-TargetField -Label 'Included target' -Targets @(Get-GraphValue -InputObject $suspiciousActivity -Name 'includeTarget')
@@ -1116,6 +1308,7 @@ function Show-PolicyObservations {
     else {
         foreach ($observation in $script:Observations) {
             Write-Host ('  - ' + $observation)
+            Add-CsvRow -Setting 'Observation' -Value $observation
         }
     }
 
@@ -1170,6 +1363,12 @@ function Test-PasskeyDynamicMigrationStatus {
 #endregion
 
 #region Main
+
+# Prove the destination before anything is read from or written to the tenant,
+# so a mistyped path costs nothing.
+if ($script:ExportCsv) {
+    $script:ResolvedCsvPath = Resolve-CsvExportPath -Path $CsvPath
+}
 
 $context = Test-RequiredGraphContext
 
@@ -1235,11 +1434,16 @@ if ($ReportOnly) {
         Write-Status -Level Warn -Text "Current value is $displayValue. A normal run would set passkeyDynamicMigration to true."
     }
 
+    # The value as read, not as verified. -ReportOnly verifies nothing.
+    Add-CsvRow -Setting 'passkeyDynamicMigration' -Value $displayValue
+
     Write-Section 'REPORT ONLY - NO CHANGES MADE'
     Write-Status -Level Skip -Text @(
         '-ReportOnly was specified, so no PATCH was sent and no value was verified.'
         'Rerun without -ReportOnly to apply the opt-out.'
     )
+
+    Export-PolicyCsv
 
     Write-Host ''
     Write-Host 'The Microsoft Graph session is still connected. Run Disconnect-MgGraph when finished.'
@@ -1260,6 +1464,11 @@ else {
 }
 
 if (-not (Test-PasskeyDynamicMigrationStatus)) {
+    # A failed verification is exactly when the collected report is worth
+    # keeping, so write it before the run ends.
+    Add-CsvRow -Setting 'passkeyDynamicMigration' -Value '(verification failed)'
+    Export-PolicyCsv
+
     throw @'
 Verification failed: passkeyDynamicMigration is not true after the operation.
 
@@ -1281,10 +1490,15 @@ output at:
 
 Write-Status -Level Ok -Text 'Verified against the policy after the operation.'
 
+# The verified value, which is the one worth carrying into a file.
+Add-CsvRow -Setting 'passkeyDynamicMigration' -Value 'true'
+
 Write-Section 'FINAL VERIFIED STATUS'
 Write-HostColor -Text '{' -Color Green
 Write-HostColor -Text '  "passkeyDynamicMigration": true' -Color Green
 Write-HostColor -Text '}' -Color Green
+
+Export-PolicyCsv
 
 Write-Host ''
 Write-Host 'The Microsoft Graph session is still connected. Run Disconnect-MgGraph when finished.'

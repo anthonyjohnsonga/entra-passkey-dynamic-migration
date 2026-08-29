@@ -45,6 +45,9 @@ Set-Location 'C:\path\to\entra-passkey-dynamic-migration'
 # Apply the opt-out.
 .\Set-EntraPasskeyDynamicMigrationOptOut.ps1
 
+# Optional: keep the whole report as a CSV as well.
+.\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -CsvPath .\tenant.csv
+
 Disconnect-MgGraph
 ```
 
@@ -118,7 +121,7 @@ role the request returns `403` even with consent in place.
 
 | File | Purpose |
 |---|---|
-| `Set-EntraPasskeyDynamicMigrationOptOut.ps1` | The report and the opt-out. Supports `-ReportOnly`, `-NoColor` and `-Verbose`. |
+| `Set-EntraPasskeyDynamicMigrationOptOut.ps1` | The report and the opt-out. Supports `-ReportOnly`, `-CsvPath`, `-NoColor` and `-Verbose`. |
 | `Test-EntraPasskeyOptOutShape.ps1` | Read-only probe. Issues three GETs and nothing else; reports how your tenant returns `optOutSettings`. |
 | [`docs/user-guide.md`](docs/user-guide.md) | **Start here.** Every step from installing the module to confirming the change, plus troubleshooting. |
 | [`docs/probe-guide.md`](docs/probe-guide.md) | Optional diagnostic: running the probe and reading its output. |

@@ -193,6 +193,49 @@ the same effect, which is what most build agents do.
 
 Add `-Verbose` for per-group resolution detail.
 
+### Exporting to CSV
+
+`-CsvPath` writes the whole report to a spreadsheet as well as to the console:
+
+```powershell
+.\Set-EntraPasskeyDynamicMigrationOptOut.ps1 -ReportOnly -CsvPath .\tenant.csv
+```
+
+The file has one row per reported setting:
+
+```text
+Section,Item,Setting,Value
+AUTHENTICATION METHODS,Passkey (FIDO2),State,enabled
+AUTHENTICATION METHODS,Passkey (FIDO2),Included targets,All users
+AUTHENTICATION METHODS,Passkey (FIDO2),Included targets,Example Group [passkey profiles: <guid>]
+ADDITIONAL POLICY SETTINGS,Registration Campaign,State,disabled
+OBSERVATIONS,,Observation,SMS is enabled in the modern Authentication Methods policy.
+PASSKEY DYNAMIC MIGRATION,,passkeyDynamicMigration,true
+```
+
+That shape is deliberate. It holds settings that would not fit a fixed set of
+columns, it gives each target its own row so that adding or removing one shows
+up as a single changed line, and it **diffs cleanly** — run it against two
+tenants, or against the same tenant a month apart, and compare the files:
+
+```powershell
+Compare-Object (Import-Csv .\before.csv) (Import-Csv .\after.csv) -Property Section,Item,Setting,Value
+```
+
+Points worth knowing:
+
+- The console report is unchanged. The file is written **in addition** to it.
+- The parent directory must already exist. It is checked **before** the script
+  contacts Graph, so a mistyped path fails immediately rather than after the
+  tenant has been changed. An existing file is overwritten.
+- Prose outcome lines are included with `Setting` set to `Status`, so you can
+  filter them out with `Where-Object { $_.Setting -ne 'Status' }` when you want
+  configuration only.
+- On a `-ReportOnly` run the `passkeyDynamicMigration` row is the value **as
+  read**, because nothing was verified. On a normal run it is the verified value.
+- The file is still written when verification fails — that is exactly when you
+  want the data to attach to an issue report.
+
 ### What you will see
 
 **`CONNECTED TENANT`** — the account and tenant ID, and whether group name

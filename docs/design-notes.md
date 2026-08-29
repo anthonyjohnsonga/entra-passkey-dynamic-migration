@@ -38,7 +38,8 @@ The script does not:
 - Touch Conditional Access, Security Defaults, per-user MFA, SSPR, or legacy MFA.
 - Retrieve per-user authentication methods or registration reports. It reads
   policy configuration only, never user data.
-- Write any file. Output goes to the console.
+- Write any file unless you ask it to. Output goes to the console. `-CsvPath` is
+  the only thing that makes it write a file, and it writes only that one.
 
 It stops before changing anything if `Policy.ReadWrite.AuthenticationMethod` is
 missing, and prints the exact command needed to reconnect.
@@ -257,7 +258,12 @@ confirmed against a live tenant:
 - Stops before any change when the required scope is missing or no session
   exists.
 - Renders timestamps identically under `en-US`, `en-GB`, and `de-DE`.
-- Leaves the Graph session connected, and creates no files.
+- Leaves the Graph session connected, and creates no file unless `-CsvPath` asks
+  for one.
+- Rejects a `-CsvPath` whose directory does not exist before it contacts Graph,
+  so a mistyped path cannot surface after the tenant has already been changed.
+- Still writes the CSV when verification fails, which is when the collected
+  report is most worth having.
 
 ---
 
