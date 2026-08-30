@@ -225,9 +225,12 @@ Compare-Object (Import-Csv .\before.csv) (Import-Csv .\after.csv) -Property Sect
 Points worth knowing:
 
 - The console report is unchanged. The file is written **in addition** to it.
-- The parent directory must already exist. It is checked **before** the script
-  contacts Graph, so a mistyped path fails immediately rather than after the
-  tenant has been changed. An existing file is overwritten.
+- The parent directory must already exist, and the file must be writable. Both
+  are checked **before** the script contacts Graph — by briefly opening the file
+  for writing, not merely by looking for it — so a mistyped path, a denied
+  directory, or a CSV still open in Excel fails immediately rather than after
+  the tenant has been changed. An existing file is overwritten, but only at the
+  end of a successful run; the check itself leaves its contents intact.
 - Prose outcome lines are included with `Setting` set to `Status`, so you can
   filter them out with `Where-Object { $_.Setting -ne 'Status' }` when you want
   configuration only.

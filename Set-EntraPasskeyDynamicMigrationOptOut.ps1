@@ -269,6 +269,38 @@ Create it first, or choose a path inside a directory that already exists.
 "@
     }
 
+    # An existing directory is not a writable one, and the point of this
+    # pre-flight is that a path problem costs nothing. Prove the write by
+    # performing it now, rather than discovering it after the tenant has already
+    # been changed. OpenOrCreate with Write does not truncate, so a CSV from an
+    # earlier run survives this intact; FileShare None is deliberate, because a
+    # file left open in Excel is the likeliest way this fails in practice.
+    $existed = Test-Path -LiteralPath $full -PathType Leaf
+
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($full, 'OpenOrCreate', 'Write', 'None')
+    }
+    catch {
+        throw @"
+The -CsvPath file cannot be written: $full
+
+$($_.Exception.Message)
+
+Check your permissions on the directory, and close the file if it is open in
+another program.
+"@
+    }
+    finally {
+        # $stream is initialised above because Set-StrictMode would otherwise
+        # throw here on the failure path and mask the real error.
+        if ($null -ne $stream) { $stream.Dispose() }
+    }
+
+    if (-not $existed) {
+        Remove-Item -LiteralPath $full -Force -ErrorAction SilentlyContinue
+    }
+
     return $full
 }
 

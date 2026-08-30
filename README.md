@@ -194,8 +194,9 @@ scenarios, and confirmed end to end against **one** production tenant in August
 - Retries a throttled group lookup once, honouring `Retry-After`, then degrades
   without stalling the opt-out.
 - Renders timestamps identically regardless of system locale.
-- Rejects a `-CsvPath` whose directory does not exist before it contacts Graph,
-  so a mistyped path cannot surface after the tenant has already been changed.
+- Rejects an unusable `-CsvPath` before it contacts Graph — a missing directory,
+  a denied directory, a read-only file, or a file locked open in Excel — so a
+  path problem cannot surface after the tenant has already been changed.
 - Still writes the CSV when verification fails, which is when the collected
   report is most worth having.
 

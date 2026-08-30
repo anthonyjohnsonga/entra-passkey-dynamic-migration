@@ -260,8 +260,12 @@ confirmed against a live tenant:
 - Renders timestamps identically under `en-US`, `en-GB`, and `de-DE`.
 - Leaves the Graph session connected, and creates no file unless `-CsvPath` asks
   for one.
-- Rejects a `-CsvPath` whose directory does not exist before it contacts Graph,
-  so a mistyped path cannot surface after the tenant has already been changed.
+- Rejects an unusable `-CsvPath` before it contacts Graph, so a path problem
+  cannot surface after the tenant has already been changed. The check opens the
+  file for writing rather than testing for existence, so a denied directory, a
+  read-only file, and a file locked open by another program are all caught up
+  front. It does not truncate an existing file, and removes the file again if
+  the check is what created it.
 - Still writes the CSV when verification fails, which is when the collected
   report is most worth having.
 
